@@ -1,0 +1,18 @@
+{
+  "name": "gameinput",
+  "version": "0.1.0",
+  "description": "Game Input abstraction library",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc -p src",
+    "clean": "rm -f *.js *.d.ts"
+  },
+  "keywords": [],
+  "author": "spacejack",
+  "license": "ISC",
+  "devDependencies": {
+    "tslint": "^5.12.0",
+    "typescript": "^3.2.2"
+  }
+}
