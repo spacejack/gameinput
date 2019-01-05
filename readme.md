@@ -24,6 +24,18 @@ gameinput.create({
 	}]
 })
 
+// And another...
+gameinput.create({
+	name: 'fire',
+	keyCodes: [16, 17, 32], // shift, ctrl, space
+	elements: document.querySelectorAll('button.fire'),
+	gamepadControls: [{
+		gamepadId: gamepadId,
+		type: 'button',
+		buttonId: 0
+	}]
+})
+
 // Then poll with:
 // (Required to get fresh Gamepad data)
 gameinput.poll()
@@ -33,11 +45,11 @@ console.log(`forward ${gameinput.pressed('forward') ? 'is' : 'is not'} pressed`)
 console.log(`forward value: ${gameinput.value('forward').toFixed(3)}`)
 
 // Or listen for press/release events:
-gameinput.on('forward', 'press', () => {
-	console.log('forward was pressed')
+gameinput.on('fire', 'press', () => {
+	console.log('fire was pressed')
 })
-gameinput.on('forward', 'release', () => {
-	console.log('forward was released')
+gameinput.on('fire', 'release', () => {
+	console.log('fire was released')
 })
 
 // Cleanup this input by calling:
