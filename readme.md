@@ -46,4 +46,4 @@ gameinput.on('forward', 'release', () => {
 gameinput.destroy('forward')
 ```
 
-Note that calling create again for the same name will replace the previous definition and any listeners for that name will no longer recieve messages.
+Note that calling create again for the same name will replace the previous definition. Any existing listeners for that input name will continue to receive messages from the new input group.
