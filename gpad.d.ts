@@ -22,6 +22,6 @@ export declare function on(eventName: 'connectchange', fn: (gamepads: ReadonlyAr
 export declare function off(eventName: 'connectchange', fn: (gamepads: ReadonlyArray<Gamepad>) => void): boolean;
 /**
  * Enable/disable constant listening for connect changes.
- * Pass no argument to get listening state.
+ * Pass no argument to return listening state.
  */
 export declare function listen(enable?: boolean): boolean;

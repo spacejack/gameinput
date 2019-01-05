@@ -1,5 +1,4 @@
 "use strict";
-// Helper/wrapper for browser Gamepad API
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.supported = typeof navigator !== 'undefined' && !!navigator.getGamepads; //|| !!navigator['webkitGetGamepads']
 var gamepads = [];
@@ -112,7 +111,7 @@ function off(eventName, fn) {
 exports.off = off;
 /**
  * Enable/disable constant listening for connect changes.
- * Pass no argument to get listening state.
+ * Pass no argument to return listening state.
  */
 function listen(enable) {
     if (enable == null || enable === !!connectListener) {

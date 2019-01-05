@@ -1,4 +1,4 @@
-import GameInput from './GameInput'
+import GameInput, {GameInputInfo} from './GameInput'
 
 export interface ElementListenerSet {
 	mousedown: EventListener
@@ -9,10 +9,8 @@ export interface ElementListenerSet {
 	touchend: EventListener
 }
 
-export interface ElementInputInfo {
+export interface ElementInputInfo extends GameInputInfo {
 	element: Element
-	onPress?(): void
-	onRelease?(): void
 }
 
 type Device = 0 | 1 | 2
@@ -21,26 +19,18 @@ const DEVICE_NONE  = 0
 const DEVICE_MOUSE = 1
 const DEVICE_TOUCH = 2
 
-export default class ElementInput extends GameInput {
-	isPressed: boolean
-	device: Device
+export default class ElementInput extends GameInput<'press' | 'release'> {
 	element: Element
-	callbacks: {
-		onPress?(): void
-		onRelease?(): void
-	}
-	listeners: ElementListenerSet
+	protected isPressed: boolean
+	protected device: Device
+	protected devListeners: ElementListenerSet
 
 	constructor (info: ElementInputInfo) {
-		super()
+		super(info)
+		this.element = info.element
 		this.isPressed = false
 		this.device = DEVICE_NONE
-		this.element = info.element
-		this.callbacks = {
-			onPress: info.onPress,
-			onRelease: info.onRelease
-		}
-		this.listeners = {
+		this.devListeners = {
 			mousedown: () => {
 				this.onPressElement(DEVICE_MOUSE)
 			},
@@ -62,26 +52,8 @@ export default class ElementInput extends GameInput {
 		snuffiOSEvents(this.element)
 		// Add the mouse/touch listeners to the element
 		for (const key of Object.keys(this.listeners) as (keyof ElementListenerSet)[]) {
-			this.element.addEventListener(key, this.listeners[key])
+			this.element.addEventListener(key, this.devListeners[key])
 		}
-	}
-
-	onPressElement (device: Device) {
-		if (this.device !== DEVICE_NONE && this.device !== device) return
-		this.device = device
-		this.isPressed = true
-		this.callbacks.onPress && this.callbacks.onPress()
-	}
-
-	onReleaseElement (device: number) {
-		if (this.device !== DEVICE_NONE && this.device !== device) return
-		this.isPressed = false
-		setTimeout(() => {
-			// iOS will fire a delayed mouse event after touchend.
-			// Delaying the device reset will ignore that mouse event.
-			this.device = DEVICE_NONE
-		}, 500)
-		this.callbacks.onRelease && this.callbacks.onRelease()
 	}
 
 	pressed() {
@@ -89,14 +61,33 @@ export default class ElementInput extends GameInput {
 	}
 
 	value() {
-		return this.isPressed ? 1.0 : 0
+		return this.isPressed ? 1 : 0
 	}
 
 	/** Should call this when this input is destroyed */
-	removeListeners() {
+	destroy() {
 		for (const key of Object.keys(this.listeners) as (keyof ElementListenerSet)[]) {
-			this.element.removeEventListener(key, this.listeners[key])
+			this.element.removeEventListener(key, this.devListeners[key])
 		}
+		unSnuffiOSEvents(this.element)
+	}
+
+	protected onPressElement (device: Device) {
+		if (this.device !== DEVICE_NONE && this.device !== device) return
+		this.device = device
+		this.isPressed = true
+		this.emit('press')
+	}
+
+	protected onReleaseElement (device: number) {
+		if (this.device !== DEVICE_NONE && this.device !== device) return
+		this.isPressed = false
+		setTimeout(() => {
+			// iOS will fire a delayed mouse event after touchend.
+			// Delaying the device reset will ignore that mouse event.
+			this.device = DEVICE_NONE
+		}, 500)
+		this.emit('release')
 	}
 }
 
@@ -106,15 +97,30 @@ const isIOS = !!navigator.userAgent.match(/iPhone|iPad|iPod/i)
 const IOS_SNUFF_EVENTS = ['dblclick']
 
 export const config = {
-	iOSHacks: true
+	/** Change this before creating ElementInputs to disable iOS special handling */
+	iOSSpecial: true
 }
 
 /**
- * iOS Hack utility - prevents events on the given element
+ * iOS fudge - prevents unwanted events on the given element
  */
-export function snuffiOSEvents (el: Element) {
-	if (!isIOS || !config.iOSHacks) return
+function snuffiOSEvents (el: Element) {
+	if (!isIOS || !config.iOSSpecial) return
 	IOS_SNUFF_EVENTS.forEach(name => {
-		el.addEventListener(name, e => {e.preventDefault()})
+		el.addEventListener(name, eatEvent)
 	})
+}
+
+/**
+ * Cleaup iOS fudge
+ */
+function unSnuffiOSEvents (el: Element) {
+	if (!isIOS || !config.iOSSpecial) return
+	IOS_SNUFF_EVENTS.forEach(name => {
+		el.removeEventListener(name, eatEvent)
+	})
+}
+
+const eatEvent = (e: Event) => {
+	e.preventDefault()
 }

@@ -1,35 +1,45 @@
 import * as gpad from './gpad'
-import GameInput from './GameInput'
+import GameInput, {GameInputInfo} from './GameInput'
 
 function clamp (n: number, min: number, max: number) {
 	return Math.min(Math.max(n, min), max)
 }
 
-export abstract class GpadInput extends GameInput {
+export abstract class GpadInput extends GameInput<'press' | 'release'> {
 	gamepadId: string
+	protected isPressed: boolean
 
 	constructor (info: GpadInputButtonInfo | GpadInputAxisInfo) {
-		super()
+		super(info)
 		this.gamepadId = info.gamepadId
+		this.isPressed = false
 	}
 
 	pressed() {
-		return this.value() > 0.75
+		return this.isPressed
 	}
 
-	static create(info: GpadInputButtonInfo | GpadInputAxisInfo) {
+	/** Must be polled to discover events */
+	poll() {
+		const p = this.value() > 0.75
+		if (p === this.isPressed) return
+		this.isPressed = p
+		this.emit(p ? 'press' : 'release')
+	}
+
+	static create (info: GpadInputButtonInfo | GpadInputAxisInfo) {
 		return info.type === 'axis'
 			? new GpadInputAxis(info) : new GpadInputButton(info)
 	}
 }
 
-export interface GpadInputButtonInfo {
+export interface GpadInputButtonInfo extends GameInputInfo {
 	type: 'button'
 	gamepadId: string
 	buttonId: number
 }
 
-export class GpadInputButton extends GpadInput implements GpadInputButtonInfo {
+export class GpadInputButton extends GpadInput {
 	type: 'button'
 	buttonId: number
 
@@ -45,14 +55,14 @@ export class GpadInputButton extends GpadInput implements GpadInputButtonInfo {
 	}
 }
 
-export interface GpadInputAxisInfo {
+export interface GpadInputAxisInfo extends GameInputInfo {
 	type: 'axis'
 	gamepadId: string
 	axisId: number
 	axisSign: -1 | 1
 }
 
-export class GpadInputAxis extends GpadInput implements GpadInputAxisInfo {
+export class GpadInputAxis extends GpadInput {
 	type: 'axis'
 	axisId: number
 	axisSign: -1 | 1

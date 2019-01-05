@@ -1,17 +1,16 @@
-import GameInput from './GameInput'
+import GameInput, {GameInputInfo} from './GameInput'
 
-export interface KeyInputListeners {
-	keydown(e: KeyboardEvent): boolean | void
-	keyup(e: KeyboardEvent): boolean | void
+export interface KeyInputInfo extends GameInputInfo {
+	code: number
 }
 
-export default class KeyInput extends GameInput {
+export default class KeyInput extends GameInput<'press' | 'release', KeyboardEvent> {
 	code: number
-	isPressed: boolean
+	protected isPressed: boolean
 
-	constructor (code: number) {
-		super()
-		this.code = code
+	protected constructor (info: KeyInputInfo) {
+		super(info)
+		this.code = info.code
 		this.isPressed = false
 	}
 
@@ -23,21 +22,41 @@ export default class KeyInput extends GameInput {
 		return this.pressed() ? 1 : 0
 	}
 
+	// override for types
+	on (id: 'press' | 'release', cb: (event: KeyboardEvent) => void) {
+		super.on(id, cb as any)
+	}
+
+	off (id: 'press' | 'release', cb: (event: KeyboardEvent) => void) {
+		super.off(id, cb as any)
+	}
+
+	protected onKeyPress(e: KeyboardEvent) {
+		if (this.isPressed) return
+		this.isPressed = true
+		this.emit('press', e)
+	}
+
+	protected onKeyRelease(e: KeyboardEvent) {
+		if (!this.isPressed) return
+		this.isPressed = false
+		this.emit('release', e)
+	}
+
 	/** State of all keys indexed by key code */
 	static readonly keyboardState = new Array<boolean>(256).fill(false)
 
-	protected static listeners: Partial<KeyInputListeners> = {
-		keydown: undefined,
-		keyup: undefined
-	}
+	protected static keyInputs: KeyInput[] = []
 
 	protected static onKeyDown (e: KeyboardEvent) {
 		const code = e.keyCode
 		if (!KeyInput.keyboardState[code]) {
 			// this key state changed
 			KeyInput.keyboardState[code] = true
-			if (KeyInput.listeners.keydown) {
-				return KeyInput.listeners.keydown(e)
+			for (const ki of KeyInput.keyInputs) {
+				if (ki.code === code) {
+					ki.onKeyPress(e)
+				}
 			}
 		}
 	}
@@ -45,24 +64,20 @@ export default class KeyInput extends GameInput {
 	protected static onKeyUp (e: KeyboardEvent) {
 		const code = e.keyCode
 		if (KeyInput.keyboardState[code]) {
+			// this key state changed
 			KeyInput.keyboardState[code] = false
-			if (KeyInput.listeners.keyup) {
-				return KeyInput.listeners.keyup(e)
+			for (const ki of KeyInput.keyInputs) {
+				if (ki.code === code) {
+					ki.onKeyRelease(e)
+				}
 			}
 		}
 	}
 
 	/**
 	 * Add the global key event listeners.
-	 * Required to handle keyboard events.
 	 */
-	static addKeyListeners (l: KeyInputListeners) {
-		if (KeyInput.listeners.keydown || KeyInput.listeners.keyup) {
-			console.warn("Key listeners already added.")
-			return
-		}
-		KeyInput.listeners.keydown = l.keydown
-		KeyInput.listeners.keyup = l.keyup
+	protected static addKeyListeners() {
 		document.addEventListener('keydown', KeyInput.onKeyDown, true)
 		document.addEventListener('keyup', KeyInput.onKeyUp, true)
 	}
@@ -70,18 +85,36 @@ export default class KeyInput extends GameInput {
 	/**
 	 * Remove the global key event listeners.
 	 */
-	static removeKeyListeners (l: KeyInputListeners) {
-		if (!KeyInput.listeners.keydown) {
-			console.warn("Key listeners were not yet added.")
-			return
-		}
+	protected static removeKeyListeners() {
 		document.removeEventListener('keyup', KeyInput.onKeyUp, true)
 		document.removeEventListener('keydown', KeyInput.onKeyDown, true)
-		KeyInput.listeners.keyup = undefined
-		KeyInput.listeners.keydown = undefined
 	}
 
 	static listeningKeys() {
-		return !!KeyInput.listeners.keydown || KeyInput.listeners.keyup
+		return KeyInput.keyInputs.length > 0
+	}
+
+	static create (info: KeyInputInfo) {
+		const ki = new KeyInput(info)
+		KeyInput.keyInputs.push(ki)
+		if (KeyInput.keyInputs.length === 1) {
+			// First key being listened for, add global listeners
+			KeyInput.addKeyListeners()
+		}
+		return ki
+	}
+
+	/** Cleanup this key listener */
+	static destroy (ki: KeyInput) {
+		const i = KeyInput.keyInputs.indexOf(ki)
+		if (i < 0) {
+			console.warn('KeyInput not found')
+			return
+		}
+		KeyInput.keyInputs.splice(i, 1)
+		if (KeyInput.keyInputs.length < 1) {
+			// No more keys to listen for, remove global listeners
+			KeyInput.removeKeyListeners()
+		}
 	}
 }

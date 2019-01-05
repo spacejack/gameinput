@@ -21,12 +21,21 @@ function clamp(n, min, max) {
 var GpadInput = /** @class */ (function (_super) {
     __extends(GpadInput, _super);
     function GpadInput(info) {
-        var _this = _super.call(this) || this;
+        var _this = _super.call(this, info) || this;
         _this.gamepadId = info.gamepadId;
+        _this.isPressed = false;
         return _this;
     }
     GpadInput.prototype.pressed = function () {
-        return this.value() > 0.75;
+        return this.isPressed;
+    };
+    /** Must be polled to discover events */
+    GpadInput.prototype.poll = function () {
+        var p = this.value() > 0.75;
+        if (p === this.isPressed)
+            return;
+        this.isPressed = p;
+        this.emit(p ? 'press' : 'release');
     };
     GpadInput.create = function (info) {
         return info.type === 'axis'

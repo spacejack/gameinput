@@ -1,5 +1,3 @@
-// Helper/wrapper for browser Gamepad API
-
 export const supported = typeof navigator !== 'undefined' && !!navigator.getGamepads //|| !!navigator['webkitGetGamepads']
 
 let gamepads: (Gamepad | null)[] = []
@@ -118,7 +116,7 @@ export function off (
 
 /**
  * Enable/disable constant listening for connect changes.
- * Pass no argument to get listening state.
+ * Pass no argument to return listening state.
  */
 export function listen (enable?: boolean) {
 	if (enable == null || enable === !!connectListener) {

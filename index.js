@@ -14,6 +14,17 @@ var __extends = (this && this.__extends) || (function () {
         d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
     };
 })();
+var __assign = (this && this.__assign) || function () {
+    __assign = Object.assign || function(t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
+                t[p] = s[p];
+        }
+        return t;
+    };
+    return __assign.apply(this, arguments);
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 var GameInput_1 = require("./GameInput");
 var KeyInput_1 = require("./KeyInput");
@@ -32,9 +43,13 @@ var GameInputGroup = /** @class */ (function (_super) {
             if (_this.isPressed)
                 return;
             _this.isPressed = true;
-            for (var _i = 0, _a = _this.listeners.press; _i < _a.length; _i++) {
-                var l = _a[_i];
-                l.callback(_this.name);
+            // Notify any listeners of pressed event
+            var listeners = inputListeners.press[_this.name];
+            if (!listeners)
+                return;
+            for (var _i = 0, listeners_1 = listeners; _i < listeners_1.length; _i++) {
+                var f = listeners_1[_i];
+                f(_this.name);
             }
         };
         /**
@@ -45,29 +60,34 @@ var GameInputGroup = /** @class */ (function (_super) {
         _this.onDeviceRelease = function () {
             if (!_this.isPressed)
                 return;
-            // Check if any other keys are down
-            if (_this.keyPressed())
-                return;
-            // Check if any elements are pressed
-            if (_this.elementPressed())
-                return;
-            // Or any gamepad controls are pressed
-            if (_this.gpadCtrlPressed())
+            // Check if any devices remain pressed
+            if (_this.anyPressed())
                 return;
             // No - so this input is truly released
             _this.isPressed = false;
-            for (var _i = 0, _a = _this.listeners.release; _i < _a.length; _i++) {
-                var l = _a[_i];
-                l.callback(_this.name);
+            // Notify any listeners of released event
+            var listeners = inputListeners.release[_this.name];
+            if (!listeners)
+                return;
+            for (var _i = 0, listeners_2 = listeners; _i < listeners_2.length; _i++) {
+                var f = listeners_2[_i];
+                f(_this.name);
             }
         };
-        _this.name = name;
+        _this.name = info.name;
         _this.isPressed = false;
         _this.keys = info.keyCodes
-            ? info.keyCodes.map(function (code) { return new KeyInput_1.default(code); })
+            ? info.keyCodes.map(function (code) {
+                var ki = KeyInput_1.default.create({
+                    code: code,
+                    onPress: _this.onDevicePress,
+                    onRelease: _this.onDeviceRelease
+                });
+                return ki;
+            })
             : [];
         _this.gpCtrls = info.gamepadControls
-            ? info.gamepadControls.map(function (i) { return GpadInput_1.GpadInput.create(i); })
+            ? info.gamepadControls.map(function (i) { return GpadInput_1.GpadInput.create(__assign({}, i, { onPress: _this.onDevicePress, onRelease: _this.onDeviceRelease })); })
             : [];
         _this.elements = info.elements
             ? info.elements.map(function (el) { return new ElementInput_1.default({
@@ -76,36 +96,21 @@ var GameInputGroup = /** @class */ (function (_super) {
                 onRelease: _this.onDeviceRelease
             }); })
             : [];
-        _this.listeners = {
-            press: [],
-            release: []
-        };
         return _this;
     }
     GameInputGroup.prototype.value = function () {
-        for (var _i = 0, _a = this.keys; _i < _a.length; _i++) {
-            var key = _a[_i];
-            if (KeyInput_1.default.keyboardState[key.code])
-                return 1;
-        }
-        for (var _b = 0, _c = this.elements; _b < _c.length; _b++) {
-            var el = _c[_b];
-            if (el.pressed())
-                return 1;
-        }
-        var v = 0;
-        for (var _d = 0, _e = this.gpCtrls; _d < _e.length; _d++) {
-            var gpc = _e[_d];
-            v = Math.max(v, gpc.value());
-        }
-        return v;
+        if (this.keys.some(function (k) { return k.pressed(); }))
+            return 1;
+        if (this.elements.some(function (el) { return el.pressed(); }))
+            return 1;
+        return this.gpCtrls.reduce(function (max, c) { return Math.max(max, c.value()); }, 0);
     };
     GameInputGroup.prototype.pressed = function () {
         return this.isPressed;
     };
-    /** Find if a key associated with this input is pressed */
+    /** Scan for just this type of input */
     GameInputGroup.prototype.keyPressed = function () {
-        return this.keys.some(function (k) { return KeyInput_1.default.keyboardState[k.code]; });
+        return this.keys.some(function (k) { return k.pressed(); });
     };
     GameInputGroup.prototype.gpadCtrlPressed = function () {
         return this.gpCtrls.some(function (gc) { return gc.pressed(); });
@@ -113,53 +118,28 @@ var GameInputGroup = /** @class */ (function (_super) {
     GameInputGroup.prototype.elementPressed = function () {
         return this.elements.some(function (el) { return el.pressed(); });
     };
+    /** Freshly computed value for isPressed */
+    GameInputGroup.prototype.anyPressed = function () {
+        return this.keyPressed() || this.gpadCtrlPressed() || this.elementPressed();
+    };
     return GameInputGroup;
 }(GameInput_1.default));
-/** Dictionary of GameInputs indexed by name */
+/** Dictionary of GameInputGroups indexed by name */
 var inputs = Object.create(null);
-function onKeyDown(e) {
-    for (var _i = 0, _a = getInputsByKeyCode(e.keyCode); _i < _a.length; _i++) {
-        var input = _a[_i];
-        input.onDevicePress();
-    }
-}
-function onKeyUp(e) {
-    for (var _i = 0, _a = getInputsByKeyCode(e.keyCode); _i < _a.length; _i++) {
-        var input = _a[_i];
-        input.onDeviceRelease();
-    }
-}
+/** Dictionary of GameInputGroup listeners */
+var inputListeners = {
+    press: Object.create(null),
+    release: Object.create(null)
+};
 /** Get all input(s) with key controls having a specific keyCode */
 function getInputsByKeyCode(code) {
-    var inps = [];
-    for (var _i = 0, _a = Object.keys(inputs); _i < _a.length; _i++) {
-        var name_1 = _a[_i];
-        var input = inputs[name_1];
-        var kcs = input.keys;
-        for (var j = 0; j < kcs.length; ++j) {
-            if (kcs[j].code === code) {
-                inps.push(input);
-                break;
-            }
+    return Object.keys(inputs).reduce(function (inps, name) {
+        if (inputs[name].keys.some(function (key) { return key.code === code; })) {
+            inps.push(inputs[name]);
         }
-    }
-    return inps;
+        return inps;
+    }, []);
 }
-/** Must poll to detect (gamepad) input press/release changes */
-function poll() {
-    var inputNames = Object.keys(inputs);
-    for (var _i = 0, inputNames_1 = inputNames; _i < inputNames_1.length; _i++) {
-        var name_2 = inputNames_1[_i];
-        var input = inputs[name_2];
-        if (input.gpCtrls.some(function (gc) { return gc.pressed(); })) {
-            input.onDevicePress();
-        }
-        else {
-            input.onDeviceRelease();
-        }
-    }
-}
-exports.poll = poll;
 /**
  * Creates a GameInputGroup associated with key code(s), gamepad control(s) and element(s).
  * This function returns nothing but you may then query input state or add listeners for this name.
@@ -173,12 +153,6 @@ function create(info) {
     if (inputs[name]) {
         console.log("Replacing input '" + name + "'");
         destroy(name);
-    }
-    if (!KeyInput_1.default.listeningKeys() && info.keyCodes && info.keyCodes.length > 0) {
-        KeyInput_1.default.addKeyListeners({
-            keydown: onKeyDown,
-            keyup: onKeyUp
-        });
     }
     var input = new GameInputGroup(info);
     inputs[name] = input;
@@ -197,25 +171,29 @@ function destroy(name) {
     }
     for (var _i = 0, _a = input.elements; _i < _a.length; _i++) {
         var ei = _a[_i];
-        ei.removeListeners();
+        ei.destroy();
+    }
+    for (var _b = 0, _c = input.keys; _b < _c.length; _b++) {
+        var ki = _c[_b];
+        KeyInput_1.default.destroy(ki);
     }
     delete inputs[name];
-    // If we've removed all inputs with keys, we can disable key listeners
-    if (!KeyInput_1.default.listeningKeys()) {
-        return; // Not listening to keys, so exit
-    }
-    for (var _b = 0, _c = Object.keys(inputs); _b < _c.length; _b++) {
-        var n = _c[_b];
-        var i = inputs[n];
-        if (i.keys.length > 0)
-            return;
-    }
-    KeyInput_1.default.removeKeyListeners({
-        keydown: onKeyDown, keyup: onKeyUp
-    });
     return true;
 }
 exports.destroy = destroy;
+/** Must poll to detect (gamepad) input press/release changes */
+function poll() {
+    var inputNames = Object.keys(inputs);
+    for (var _i = 0, inputNames_1 = inputNames; _i < inputNames_1.length; _i++) {
+        var name_1 = inputNames_1[_i];
+        var input = inputs[name_1];
+        for (var _a = 0, _b = input.gpCtrls; _a < _b.length; _a++) {
+            var gp = _b[_a];
+            gp.poll();
+        }
+    }
+}
+exports.poll = poll;
 /**
  * Gets the pressed state of the named input
  */
@@ -237,8 +215,8 @@ exports.value = value;
  */
 function getPressed(obj) {
     for (var _i = 0, _a = Object.keys(obj); _i < _a.length; _i++) {
-        var name_3 = _a[_i];
-        obj[name_3] = pressed(name_3);
+        var name_2 = _a[_i];
+        obj[name_2] = pressed(name_2);
     }
     return obj;
 }
@@ -248,49 +226,62 @@ exports.getPressed = getPressed;
  */
 function getValues(obj) {
     for (var _i = 0, _a = Object.keys(obj); _i < _a.length; _i++) {
-        var name_4 = _a[_i];
-        obj[name_4] = value(name_4);
+        var name_3 = _a[_i];
+        obj[name_3] = value(name_3);
     }
     return obj;
 }
 exports.getValues = getValues;
 /**
- * Attach an input listener callback.
+ * Add an input listener.
  */
-function on(name, type, callback) {
+function on(name, type, listener) {
+    // Be a helpful public API
     if (!name || typeof name !== 'string') {
         throw new Error("Invalid input name.");
     }
     if (type !== 'press' && type !== 'release') {
         throw new Error("Invalid input event type.");
     }
-    var input = inputs[name];
-    if (!input) {
-        throw new Error("Input with name '" + name + "' not found.");
+    if (!inputs[name]) {
+        console.warn("Adding " + type + " listener for input '" + name + "' which doesn't exist (yet?)");
     }
-    if (input.listeners[type].some(function (l) { return l.type === type && l.callback === callback; })) {
-        console.warn("Already added this listener.");
-        return;
+    // Add to the listener dictionary
+    var list = inputListeners[type][name];
+    if (!list) {
+        inputListeners[type][name] = list = [];
     }
-    input.listeners[type].push({ type: type, callback: callback });
-}
-exports.on = on;
-/**
- * Detach an input listener callback.
- */
-function off(name, type, callback) {
-    var input = inputs[name];
-    if (!input) {
-        console.warn("Input not found with name " + name);
-    }
-    var ls = input.listeners[type];
-    for (var i = ls.length - 1; i >= 0; --i) {
-        var l = ls[i];
-        if (l.callback === callback) {
-            ls.splice(i, 1);
+    else {
+        if (list.some(function (l) { return l === listener; })) {
+            console.warn("Already added this " + type + " listener for input name: " + name);
             return;
         }
     }
-    console.warn("Listener not found for input '" + name + "' with type " + type + ", cannot remove.");
+    list.push(listener);
+}
+exports.on = on;
+/**
+ * Remove an input listener.
+ */
+function off(name, type, listener) {
+    // Be a helpful public API
+    if (!name || typeof name !== 'string') {
+        throw new Error("Invalid input name.");
+    }
+    if (type !== 'press' && type !== 'release') {
+        throw new Error("Invalid input event type.");
+    }
+    // Remove from listener dictionary
+    var list = inputListeners[type][name];
+    if (!list) {
+        console.warn(type + " listener not found for input name: " + name);
+        return;
+    }
+    var i = list.indexOf(listener);
+    if (i < 0) {
+        console.warn(type + " listener not found for input name: " + name);
+        return;
+    }
+    list.splice(i, 1);
 }
 exports.off = off;

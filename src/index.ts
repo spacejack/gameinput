@@ -13,8 +13,9 @@ export type GameInputEventType = 'press' | 'release'
 
 export type GameInputEventListener = (name: string) => void
 
-interface GameInputListener {
-	type: GameInputEventType, callback: GameInputEventListener
+interface GameInputListenerDict {
+	press: Record<string, GameInputEventListener[]>
+	release: Record<string, GameInputEventListener[]>
 }
 
 export interface GameInputGroupInfo {
@@ -25,23 +26,33 @@ export interface GameInputGroupInfo {
 }
 
 /** Summarizes all device inputs for a single named input */
-class GameInputGroup extends GameInput {
+class GameInputGroup extends GameInput<'press' | 'release'> {
 	name: string
-	isPressed: boolean
 	keys: KeyInput[]
 	gpCtrls: (GpadInputAxis | GpadInputButton)[]
 	elements: ElementInput[]
-	listeners: Record<GameInputEventType, GameInputListener[]>
+	protected isPressed: boolean
 
 	constructor (info: GameInputGroupInfo) {
 		super()
-		this.name = name
+		this.name = info.name
 		this.isPressed = false
 		this.keys = info.keyCodes
-			? info.keyCodes.map(code => new KeyInput(code))
+			? info.keyCodes.map(code => {
+				const ki = KeyInput.create({
+					code,
+					onPress: this.onDevicePress,
+					onRelease: this.onDeviceRelease
+				})
+				return ki
+			})
 			: []
 		this.gpCtrls = info.gamepadControls
-			? info.gamepadControls.map(i => GpadInput.create(i))
+			? info.gamepadControls.map(i => GpadInput.create({
+				...i,
+				onPress: this.onDevicePress,
+				onRelease: this.onDeviceRelease
+			}))
 			: []
 		this.elements = info.elements
 			? info.elements.map(el => new ElementInput({
@@ -50,33 +61,21 @@ class GameInputGroup extends GameInput {
 				onRelease: this.onDeviceRelease
 			}))
 			: []
-		this.listeners = {
-			press: [],
-			release: []
-		}
 	}
 
 	value() {
-		for (const key of this.keys) {
-			if (KeyInput.keyboardState[key.code]) return 1
-		}
-		for (const el of this.elements) {
-			if (el.pressed()) return 1
-		}
-		let v = 0
-		for (const gpc of this.gpCtrls) {
-			v = Math.max(v, gpc.value())
-		}
-		return v
+		if (this.keys.some(k => k.pressed())) return 1
+		if (this.elements.some(el => el.pressed())) return 1
+		return this.gpCtrls.reduce((max, c) => Math.max(max, c.value()), 0)
 	}
 
 	pressed() {
 		return this.isPressed
 	}
 
-	/** Find if a key associated with this input is pressed */
+	/** Scan for just this type of input */
 	keyPressed() {
-		return this.keys.some(k => KeyInput.keyboardState[k.code])
+		return this.keys.some(k => k.pressed())
 	}
 
 	gpadCtrlPressed() {
@@ -87,15 +86,23 @@ class GameInputGroup extends GameInput {
 		return this.elements.some(el => el.pressed())
 	}
 
+	/** Freshly computed value for isPressed */
+	anyPressed() {
+		return this.keyPressed() || this.gpadCtrlPressed() || this.elementPressed()
+	}
+
 	/**
 	 * One of the devices for this input was pressed.
 	 * Should we change the state of this input to pressed and alert listeners?
 	 */
-	onDevicePress = () => {
+	protected onDevicePress = () => {
 		if (this.isPressed) return
 		this.isPressed = true
-		for (const l of this.listeners.press) {
-			l.callback(this.name)
+		// Notify any listeners of pressed event
+		const listeners = inputListeners.press[this.name]
+		if (!listeners) return
+		for (const f of listeners) {
+			f(this.name)
 		}
 	}
 
@@ -104,64 +111,38 @@ class GameInputGroup extends GameInput {
 	 * Should we change the state of this input to released and alert listeners
 	 * or are there still other pressed devices...
 	 */
-	onDeviceRelease = () => {
+	protected onDeviceRelease = () => {
 		if (!this.isPressed) return
-		// Check if any other keys are down
-		if (this.keyPressed()) return
-		// Check if any elements are pressed
-		if (this.elementPressed()) return
-		// Or any gamepad controls are pressed
-		if (this.gpadCtrlPressed()) return
+		// Check if any devices remain pressed
+		if (this.anyPressed()) return
 		// No - so this input is truly released
 		this.isPressed = false
-		for (const l of this.listeners.release) {
-			l.callback(this.name)
+		// Notify any listeners of released event
+		const listeners = inputListeners.release[this.name]
+		if (!listeners) return
+		for (const f of listeners) {
+			f(this.name)
 		}
 	}
 }
 
-/** Dictionary of GameInputs indexed by name */
+/** Dictionary of GameInputGroups indexed by name */
 const inputs: {[name: string]: GameInputGroup} = Object.create(null)
 
-function onKeyDown (e: KeyboardEvent) {
-	for (const input of getInputsByKeyCode(e.keyCode)) {
-		input.onDevicePress()
-	}
-}
-
-function onKeyUp (e: KeyboardEvent) {
-	for (const input of getInputsByKeyCode(e.keyCode)) {
-		input.onDeviceRelease()
-	}
+/** Dictionary of GameInputGroup listeners */
+const inputListeners: GameInputListenerDict = {
+	press: Object.create(null),
+	release: Object.create(null)
 }
 
 /** Get all input(s) with key controls having a specific keyCode */
 function getInputsByKeyCode (code: number): GameInputGroup[] {
-	const inps: GameInputGroup[] = []
-	for (const name of Object.keys(inputs)) {
-		const input = inputs[name]
-		const kcs = input.keys
-		for (let j = 0; j < kcs.length; ++j) {
-			if (kcs[j].code === code) {
-				inps.push(input)
-				break
-			}
+	return Object.keys(inputs).reduce<GameInputGroup[]>((inps, name) => {
+		if (inputs[name].keys.some(key => key.code === code)) {
+			inps.push(inputs[name])
 		}
-	}
-	return inps
-}
-
-/** Must poll to detect (gamepad) input press/release changes */
-export function poll() {
-	const inputNames = Object.keys(inputs)
-	for (const name of inputNames) {
-		const input = inputs[name]
-		if (input.gpCtrls.some(gc => gc.pressed())) {
-			input.onDevicePress()
-		} else {
-			input.onDeviceRelease()
-		}
-	}
+		return inps
+	}, [])
 }
 
 /**
@@ -178,12 +159,6 @@ export function create (info: GameInputGroupInfo) {
 		console.log(`Replacing input '${name}'`)
 		destroy(name)
 	}
-	if (!KeyInput.listeningKeys() && info.keyCodes && info.keyCodes.length > 0) {
-		KeyInput.addKeyListeners({
-			keydown: onKeyDown,
-			keyup: onKeyUp
-		})
-	}
 	const input = new GameInputGroup(info)
 	inputs[name] = input
 }
@@ -191,7 +166,7 @@ export function create (info: GameInputGroupInfo) {
 /**
  * Destroys a GameInputGroup
  */
-export function destroy (name: string) {
+export function destroy (name: string): boolean {
 	if (!name || typeof name !== 'string') {
 		throw new Error("Invalid name for input.")
 	}
@@ -200,21 +175,24 @@ export function destroy (name: string) {
 		return false
 	}
 	for (const ei of input.elements) {
-		ei.removeListeners()
+		ei.destroy()
+	}
+	for (const ki of input.keys) {
+		KeyInput.destroy(ki)
 	}
 	delete inputs[name]
-	// If we've removed all inputs with keys, we can disable key listeners
-	if (!KeyInput.listeningKeys()) {
-		return // Not listening to keys, so exit
-	}
-	for (const n of Object.keys(inputs)) {
-		const i = inputs[n]
-		if (i.keys.length > 0) return
-	}
-	KeyInput.removeKeyListeners({
-		keydown: onKeyDown, keyup: onKeyUp
-	})
 	return true
+}
+
+/** Must poll to detect (gamepad) input press/release changes */
+export function poll() {
+	const inputNames = Object.keys(inputs)
+	for (const name of inputNames) {
+		const input = inputs[name]
+		for (const gp of input.gpCtrls) {
+			gp.poll()
+		}
+	}
 }
 
 /**
@@ -254,45 +232,57 @@ export function getValues<T extends string>(obj: Record<T, number>) {
 }
 
 /**
- * Attach an input listener callback.
+ * Add an input listener.
  */
 export function on (
-	name: string, type: GameInputEventType, callback: GameInputEventListener
+	name: string, type: GameInputEventType, listener: GameInputEventListener
 ) {
+	// Be a helpful public API
 	if (!name || typeof name !== 'string') {
 		throw new Error("Invalid input name.")
 	}
 	if (type !== 'press' && type !== 'release') {
 		throw new Error("Invalid input event type.")
 	}
-	const input = inputs[name]
-	if (!input) {
-		throw new Error(`Input with name '${name}' not found.`)
+	if (!inputs[name]) {
+		console.warn(`Adding ${type} listener for input '${name}' which doesn't exist (yet?)`)
 	}
-	if (input.listeners[type].some(l => l.type === type && l.callback === callback)) {
-		console.warn("Already added this listener.")
-		return
-	}
-	input.listeners[type].push({type, callback})
-}
-
-/**
- * Detach an input listener callback.
- */
-export function off (
-	name: string, type: GameInputEventType, callback: GameInputEventListener
-) {
-	const input = inputs[name]
-	if (!input) {
-		console.warn(`Input not found with name ${name}`)
-	}
-	const ls = input.listeners[type]
-	for (let i = ls.length - 1; i >= 0; --i) {
-		const l = ls[i]
-		if (l.callback === callback) {
-			ls.splice(i, 1)
+	// Add to the listener dictionary
+	let list = inputListeners[type][name]
+	if (!list) {
+		inputListeners[type][name] = list = []
+	} else {
+		if (list.some(l => l === listener)) {
+			console.warn(`Already added this ${type} listener for input name: ${name}`)
 			return
 		}
 	}
-	console.warn(`Listener not found for input '${name}' with type ${type}, cannot remove.`)
+	list.push(listener)
+}
+
+/**
+ * Remove an input listener.
+ */
+export function off (
+	name: string, type: GameInputEventType, listener: GameInputEventListener
+) {
+	// Be a helpful public API
+	if (!name || typeof name !== 'string') {
+		throw new Error("Invalid input name.")
+	}
+	if (type !== 'press' && type !== 'release') {
+		throw new Error("Invalid input event type.")
+	}
+	// Remove from listener dictionary
+	const list = inputListeners[type][name]
+	if (!list) {
+		console.warn(`${type} listener not found for input name: ${name}`)
+		return
+	}
+	const i = list.indexOf(listener)
+	if (i < 0) {
+		console.warn(`${type} listener not found for input name: ${name}`)
+		return
+	}
+	list.splice(i, 1)
 }

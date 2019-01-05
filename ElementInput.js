@@ -20,15 +20,11 @@ var DEVICE_TOUCH = 2;
 var ElementInput = /** @class */ (function (_super) {
     __extends(ElementInput, _super);
     function ElementInput(info) {
-        var _this = _super.call(this) || this;
+        var _this = _super.call(this, info) || this;
+        _this.element = info.element;
         _this.isPressed = false;
         _this.device = DEVICE_NONE;
-        _this.element = info.element;
-        _this.callbacks = {
-            onPress: info.onPress,
-            onRelease: info.onRelease
-        };
-        _this.listeners = {
+        _this.devListeners = {
             mousedown: function () {
                 _this.onPressElement(DEVICE_MOUSE);
             },
@@ -51,16 +47,30 @@ var ElementInput = /** @class */ (function (_super) {
         // Add the mouse/touch listeners to the element
         for (var _i = 0, _a = Object.keys(_this.listeners); _i < _a.length; _i++) {
             var key = _a[_i];
-            _this.element.addEventListener(key, _this.listeners[key]);
+            _this.element.addEventListener(key, _this.devListeners[key]);
         }
         return _this;
     }
+    ElementInput.prototype.pressed = function () {
+        return this.isPressed;
+    };
+    ElementInput.prototype.value = function () {
+        return this.isPressed ? 1 : 0;
+    };
+    /** Should call this when this input is destroyed */
+    ElementInput.prototype.destroy = function () {
+        for (var _i = 0, _a = Object.keys(this.listeners); _i < _a.length; _i++) {
+            var key = _a[_i];
+            this.element.removeEventListener(key, this.devListeners[key]);
+        }
+        unSnuffiOSEvents(this.element);
+    };
     ElementInput.prototype.onPressElement = function (device) {
         if (this.device !== DEVICE_NONE && this.device !== device)
             return;
         this.device = device;
         this.isPressed = true;
-        this.callbacks.onPress && this.callbacks.onPress();
+        this.emit('press');
     };
     ElementInput.prototype.onReleaseElement = function (device) {
         var _this = this;
@@ -72,20 +82,7 @@ var ElementInput = /** @class */ (function (_super) {
             // Delaying the device reset will ignore that mouse event.
             _this.device = DEVICE_NONE;
         }, 500);
-        this.callbacks.onRelease && this.callbacks.onRelease();
-    };
-    ElementInput.prototype.pressed = function () {
-        return this.isPressed;
-    };
-    ElementInput.prototype.value = function () {
-        return this.isPressed ? 1.0 : 0;
-    };
-    /** Should call this when this input is destroyed */
-    ElementInput.prototype.removeListeners = function () {
-        for (var _i = 0, _a = Object.keys(this.listeners); _i < _a.length; _i++) {
-            var key = _a[_i];
-            this.element.removeEventListener(key, this.listeners[key]);
-        }
+        this.emit('release');
     };
     return ElementInput;
 }(GameInput_1.default));
@@ -94,16 +91,29 @@ var isIOS = !!navigator.userAgent.match(/iPhone|iPad|iPod/i);
 /** iOS troublesome events to prevent */
 var IOS_SNUFF_EVENTS = ['dblclick'];
 exports.config = {
-    iOSHacks: true
+    /** Change this before creating ElementInputs to disable iOS special handling */
+    iOSSpecial: true
 };
 /**
- * iOS Hack utility - prevents events on the given element
+ * iOS fudge - prevents unwanted events on the given element
  */
 function snuffiOSEvents(el) {
-    if (!isIOS || !exports.config.iOSHacks)
+    if (!isIOS || !exports.config.iOSSpecial)
         return;
     IOS_SNUFF_EVENTS.forEach(function (name) {
-        el.addEventListener(name, function (e) { e.preventDefault(); });
+        el.addEventListener(name, eatEvent);
     });
 }
-exports.snuffiOSEvents = snuffiOSEvents;
+/**
+ * Cleaup iOS fudge
+ */
+function unSnuffiOSEvents(el) {
+    if (!isIOS || !exports.config.iOSSpecial)
+        return;
+    IOS_SNUFF_EVENTS.forEach(function (name) {
+        el.removeEventListener(name, eatEvent);
+    });
+}
+var eatEvent = function (e) {
+    e.preventDefault();
+};

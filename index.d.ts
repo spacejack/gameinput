@@ -7,8 +7,6 @@ export interface GameInputGroupInfo {
     gamepadControls?: ReadonlyArray<GpadInputAxisInfo | GpadInputButtonInfo>;
     elements?: ReadonlyArray<Element>;
 }
-/** Must poll to detect (gamepad) input press/release changes */
-export declare function poll(): void;
 /**
  * Creates a GameInputGroup associated with key code(s), gamepad control(s) and element(s).
  * This function returns nothing but you may then query input state or add listeners for this name.
@@ -18,7 +16,9 @@ export declare function create(info: GameInputGroupInfo): void;
 /**
  * Destroys a GameInputGroup
  */
-export declare function destroy(name: string): boolean | undefined;
+export declare function destroy(name: string): boolean;
+/** Must poll to detect (gamepad) input press/release changes */
+export declare function poll(): void;
 /**
  * Gets the pressed state of the named input
  */
@@ -36,10 +36,10 @@ export declare function getPressed<T extends string>(obj: Record<T, boolean>): R
  */
 export declare function getValues<T extends string>(obj: Record<T, number>): Record<T, number>;
 /**
- * Attach an input listener callback.
+ * Add an input listener.
  */
-export declare function on(name: string, type: GameInputEventType, callback: GameInputEventListener): void;
+export declare function on(name: string, type: GameInputEventType, listener: GameInputEventListener): void;
 /**
- * Detach an input listener callback.
+ * Remove an input listener.
  */
-export declare function off(name: string, type: GameInputEventType, callback: GameInputEventListener): void;
+export declare function off(name: string, type: GameInputEventType, listener: GameInputEventListener): void;
