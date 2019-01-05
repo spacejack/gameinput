@@ -5,7 +5,7 @@ export interface GameInputGroupInfo {
     name: string;
     keyCodes?: ReadonlyArray<number>;
     gamepadControls?: ReadonlyArray<GpadInputAxisInfo | GpadInputButtonInfo>;
-    elements?: ReadonlyArray<Element>;
+    elements?: ArrayLike<Element>;
 }
 /**
  * Creates a GameInputGroup associated with key code(s), gamepad control(s) and element(s).

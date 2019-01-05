@@ -15,9 +15,7 @@ import * as gameinput from 'gameinput'
 gameinput.create({
 	name: 'forward',
 	keyCodes: [38, 87], // up-arrow, W
-	elements: Array.from(
-		document.querySelectorAll('button.forward')
-	),
+	elements: document.querySelectorAll('button.forward'),
 	gamepadControls: [{
 		gamepadId: gamepadId,
 		type: 'axis',

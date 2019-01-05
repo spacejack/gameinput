@@ -22,7 +22,7 @@ export interface GameInputGroupInfo {
 	name: string
 	keyCodes?: ReadonlyArray<number>
 	gamepadControls?: ReadonlyArray<GpadInputAxisInfo | GpadInputButtonInfo>
-	elements?: ReadonlyArray<Element>
+	elements?: ArrayLike<Element>
 }
 
 /** Summarizes all device inputs for a single named input */
@@ -55,11 +55,11 @@ class GameInputGroup extends GameInput<'press' | 'release'> {
 			}))
 			: []
 		this.elements = info.elements
-			? info.elements.map(el => new ElementInput({
+			? Array.prototype.map.call(info.elements, (el: Element) => new ElementInput({
 				element: el,
 				onPress: this.onDevicePress,
 				onRelease: this.onDeviceRelease
-			}))
+			})) as ElementInput[]
 			: []
 	}
 

@@ -90,7 +90,7 @@ var GameInputGroup = /** @class */ (function (_super) {
             ? info.gamepadControls.map(function (i) { return GpadInput_1.GpadInput.create(__assign({}, i, { onPress: _this.onDevicePress, onRelease: _this.onDeviceRelease })); })
             : [];
         _this.elements = info.elements
-            ? info.elements.map(function (el) { return new ElementInput_1.default({
+            ? Array.prototype.map.call(info.elements, function (el) { return new ElementInput_1.default({
                 element: el,
                 onPress: _this.onDevicePress,
                 onRelease: _this.onDeviceRelease
